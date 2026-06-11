@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Definite Integration Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f7fb;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            max-width: 800px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-top: 0;
+        }
+        .calculator-layout {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        @media(min-width: 768px) {
+            .calculator-layout {
+                grid-template-columns: 300px 1fr;
+            }
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #5f6368;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #dadce0;
+            border-radius: 6px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus {
+            border-color: #1a73e8;
+        }
+        .result-box {
+            background-color: #e8f0fe;
+            border-left: 5px solid #1a73e8;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .result-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #1967d2;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .result-value {
+            font-size: 1.6rem;
+            font-weight: bold;
+            color: #1967d2;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .error {
+            color: #d93025;
+            background-color: #fce8e6;
+            border-left: 5px solid #d93025;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .chart-container {
+            position: relative;
+            min-height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Definite Integration Calculator</h1>
+    
+    <div class="calculator-layout">
+        <div class="controls">
+            <div class="input-group">
+                <label for="function-input">Function f(x)</label>
+                <input type="text" id="function-input" value="x^2 - 2x + 1" placeholder="e.g., sin(x), x^2, exp(x)">
+            </div>
+            
+            <div class="input-group">
+                <label for="lower-bound">Lower Bound (a)</label>
+                <input type="number" id="lower-bound" value="0" step="any">
+            </div>
+            
+            <div class="input-group">
+                <label for="upper-bound">Upper Bound (b)</label>
+                <input type="number" id="upper-bound" value="3" step="any">
+            </div>
+
+            <div id="error-message" class="error"></div>
+
+            <div class="result-box">
+                <div class="result-title">Definite Integral Value</div>
+                <div id="result-display" class="result-value">0.00</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="myChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    let myChart = null;
+
+    // Get DOM Elements
+    const functionInput = document.getElementById('function-input');
+    const lowerInput = document.getElementById('lower-bound');
+    const upperInput = document.getElementById('upper-bound');
+    const resultDisplay = document.getElementById('result-display');
+    const errorDisplay = document.getElementById('error-message');
+
+    // Attach Event Listeners for real-time updating
+    functionInput.addEventListener('input', calculateAndPlot);
+    lowerInput.addEventListener('input', calculateAndPlot);
+    upperInput.addEventListener('input', calculateAndPlot);
+
+    // Initial run on page load
+    window.onload = function() {
+        calculateAndPlot();
+    };
+
+    // Numerical integration using Simpson's Rule
+    function simpsonsRule(f, a, b, n = 1000) {
+        if (n % 2 !== 0) n++; // n must be even
+        const h = (b - a) / n;
+        let sum = f(a) + f(b);
+
+        for (let i = 1; i < n; i++) {
+            const x = a + i * h;
+            sum += i % 2 === 0 ? 2 * f(x) : 4 * f(x);
+        }
+        return (h / 3) * sum;
+    }
+
+    function calculateAndPlot() {
+        // Clear previous error
+        errorDisplay.style.display = 'none';
+        errorDisplay.innerText = '';
+
+        const exprText = functionInput.value.trim();
+        const a = parseFloat(lowerInput.value);
+        const b = parseFloat(upperInput.value);
+
+        if (!exprText || isNaN(a) || isNaN(b)) {
+            resultDisplay.innerText = "---";
+            return;
+        }
+
+        try {
+            // Compile the function expression using math.js
+            const compiledExpr = math.compile(exprText);
+            const f = (x) => compiledExpr.evaluate({ x: x });
+
+            // Test evaluation to ensure validity
+            f(a);
+
+            // 1. Calculate the Definite Integral
+            const integralValue = simpsonsRule(f, a, b);
+            
+            // Format output nicely (handle floating point artifacts)
+            if (isNaN(integralValue) || !isFinite(integralValue)) {
+                throw new Error("Integral values out of scope or undefined in this range.");
+            }
+            resultDisplay.innerText = Number(integralValue.toFixed(5)).toString();
+
+            // 2. Generate Data Points for Charting
+            // Dynamically set the graph limits slightly wider than [a, b] for context
+            const rangePadding = Math.abs(b - a) * 0.4 || 2;
+            const graphMin = Math.min(a, b) - rangePadding;
+            const graphMax = Math.max(a, b) + rangePadding;
+
+            const totalPoints = 200;
+            const step = (graphMax - graphMin) / totalPoints;
+
+            const mainLineData = [];
+            const shadedAreaData = [];
+
+            for (let i = 0; i <= totalPoints; i++) {
+                const currentX = graphMin + i * step;
+                let currentY;
+                
+                try {
+                    currentY = f(currentX);
+                } catch(e) {
+                    currentY = null;
+                }
+
+                if (typeof currentY === 'number' && isFinite(currentY)) {
+                    mainLineData.push({ x: currentX, y: currentY });
+
+                    // Shaded Area condition: if x is within [a, b]
+                    const minBound = Math.min(a, b);
+                    const maxBound = Math.max(a, b);
+                    if (currentX >= minBound && currentX <= maxBound) {
+                        shadedAreaData.push({ x: currentX, y: currentY });
+                    }
+                }
+            }
+
+            // Update Chart
+            updateChart(mainLineData, shadedAreaData, minBound = Math.min(a,b), maxBound = Math.max(a,b));
+
+        } catch (error) {
+            errorDisplay.style.display = 'block';
+            errorDisplay.innerText = "Error: " + error.message;
+            resultDisplay.innerText = "Error";
+        }
+    }
+
+    function updateChart(lineData, areaData, minBound, maxBound) {
+        const ctx = document.getElementById('myChart').getContext('2d');
+
+        if (myChart) {
+            myChart.destroy(); // Destroy previous instance to re-render
+        }
+
+        myChart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'f(x)',
+                        data: lineData,
+                        showLine: true,
+                        borderColor: '#1a73e8',
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.1
+                    },
+                    {
+                        label: `Area under curve [${minBound}, ${maxBound}]`,
+                        data: areaData,
+                        showLine: true,
+                        borderColor: 'transparent',
+                        pointRadius: 0,
+                        backgroundColor: 'rgba(26, 115, 232, 0.25)',
+                        fill: 'origin', // Fills to the x-axis (y=0)
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            filter: function(item) {
+                                // Clear duplicate/unwanted legends if necessary
+                                return true;
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `(${context.parsed.x.toFixed(2)}, ${context.parsed.y.toFixed(2)})`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        grid: {
+                            color: '#e0e0e0'
+                        },
+                        title: {
+                            display: true,
+                            text: 'x'
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        grid: {
+                            color: '#e0e0e0'
+                        },
+                        title: {
+                            display: true,
+                            text: 'y'
+                        }
+                    }
+                }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
